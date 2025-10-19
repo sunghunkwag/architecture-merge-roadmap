@@ -36,6 +36,60 @@ The **architecture-merge-roadmap** project aims to:
 - **scripts/**: Automation tools for migration and testing
 - **examples/**: Sample implementations and code snippets
 
+## Core Code Artifacts and Review Guidelines
+
+This section references essential code artifacts, diagrams, and processes that ensure quality and consistency throughout the project lifecycle.
+
+### Core Artifacts
+
+- **[adapter_example.py](adapter_example.py)**: Reference implementation demonstrating adapter pattern and integration best practices
+- **[api_spec/openapi.yml](api_spec/openapi.yml)**: OpenAPI specification defining standardized API contracts and interfaces
+- **[FLOWCHART.md](FLOWCHART.md)**: Visual workflow documentation showing system integration flows and decision points
+- **[checklist.md](checklist.md)**: Comprehensive quality checklist covering all project phases (see Phase 5 for code/diagram review guidelines)
+- **[diagrams/](diagrams/)**: Directory containing architecture diagrams, flowcharts, and visual documentation
+- **[.github/](.github/)**: GitHub templates for issues, pull requests, and workflow automation
+
+### Code Review Process
+
+> **⚠️ Important**: All code contributions must undergo peer review before merging. See [checklist.md Phase 5](checklist.md#phase-5-code-and-diagram-review-best-practices) for detailed guidelines.
+
+**Key Review Requirements:**
+- Review code for adherence to project coding standards and architectural patterns
+- Verify that all public interfaces are documented with clear docstrings
+- Ensure proper error handling and input validation
+- Check for test coverage of new functionality
+- Validate that code changes align with API specifications in `api_spec/openapi.yml`
+- Confirm integration points match patterns shown in `adapter_example.py`
+
+### Diagram Expectations
+
+> **📊 Diagram Standards**: All architectural changes require corresponding diagram updates. Visual documentation is critical for maintaining shared understanding.
+
+**Diagram Requirements:**
+- Update diagrams in the `diagrams/` directory when modifying system architecture
+- Ensure flowcharts in `FLOWCHART.md` reflect current integration workflows
+- Use consistent notation and styling across all visual documentation
+- Include legends and annotations for complex diagrams
+- Review diagrams with stakeholders before finalizing architectural changes
+
+### Best Practices for Code and Diagram Maintenance
+
+**Code Maintenance:**
+1. **Keep Code and Documentation in Sync**: Update relevant documentation files when changing implementations
+2. **Follow the Adapter Pattern**: Reference `adapter_example.py` when creating new integration adapters
+3. **Maintain API Contracts**: Coordinate with API specification owners before breaking changes
+4. **Write Self-Documenting Code**: Use clear variable names and add comments for complex logic
+5. **Test-Driven Development**: Write tests before implementing new features when possible
+
+**Diagram Maintenance:**
+1. **Update Diagrams Promptly**: Don't let visual documentation drift from implementation reality
+2. **Version Control for Diagrams**: Store diagram source files (not just images) in the repository
+3. **Regular Review Cycles**: Schedule periodic diagram reviews to ensure accuracy
+4. **Accessible Formats**: Export diagrams in multiple formats (SVG, PNG) for different use cases
+5. **Collaborative Editing**: Use tools that support collaborative diagram creation and review
+
+**For complete code and diagram review guidelines, see [checklist.md Phase 5](checklist.md#phase-5-code-and-diagram-review-best-practices).**
+
 ## Usage Instructions
 
 ### Getting Started
@@ -49,140 +103,114 @@ The **architecture-merge-roadmap** project aims to:
 2. **Review Current Roadmap**
    - Check the `roadmap/` directory for current status
    - Read phase-specific documentation in `docs/`
+   - Review integration plans for your target repository
 
-3. **Understand the Architecture**
-   - Review diagrams in `architecture/` folder
-   - Study integration plans for your area of interest
+3. **Set Up Your Environment**
+   - Install required dependencies (see `requirements.txt` if present)
+   - Configure your development environment according to project standards
+   - Review coding guidelines in documentation
 
-4. **Set Up Development Environment**
-   ```bash
-   # Install dependencies (if applicable)
-   npm install
-   # or
-   pip install -r requirements.txt
-   ```
+### For Contributors
 
-5. **Run Tests**
-   ```bash
-   # Execute test suite to verify your environment
-   npm test
-   # or
-   python -m pytest
-   ```
+1. **Before Starting Work**
+   - Check existing issues and pull requests to avoid duplication
+   - Comment on relevant issues to indicate you're working on them
+   - Review the contribution guidelines in this README
 
-### Working with Integration Plans
+2. **Making Changes**
+   - Create a feature branch from `main`
+   - Follow the coding standards and architectural patterns
+   - Write clear commit messages explaining your changes
+   - Update documentation and tests as needed
 
-- Each integration plan in `integration-plans/` corresponds to a specific repository
-- Follow the step-by-step instructions in each plan
-- Update the plan document as you complete steps
-- Communicate progress in relevant issues or pull requests
+3. **Submitting Pull Requests**
+   - Ensure all tests pass locally
+   - Update relevant documentation
+   - Reference related issues in your PR description
+   - Request reviews from appropriate team members
 
 ## Contribution Guidelines
 
-We welcome contributions from all team members and community participants! Here's how you can help:
-
-### How to Contribute
-
-1. **Fork the Repository**
-   - Click the "Fork" button at the top of this page
-   - Clone your fork locally
-
-2. **Create a Branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   # or
-   git checkout -b fix/your-bugfix-name
-   ```
-
-3. **Make Your Changes**
-   - Follow existing code style and conventions
-   - Add tests for new functionality
-   - Update documentation as needed
-
-4. **Test Your Changes**
-   - Run all tests to ensure nothing breaks
-   - Verify documentation renders correctly
-
-5. **Commit Your Changes**
-   ```bash
-   git add .
-   git commit -m "Clear, descriptive commit message"
-   ```
-
-6. **Push to Your Fork**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-7. **Submit a Pull Request**
-   - Go to the original repository
-   - Click "New Pull Request"
-   - Provide a clear description of your changes
-   - Reference any related issues
-
-### Contribution Areas
-
-- **Documentation**: Improve clarity, add examples, fix typos
-- **Architecture Design**: Propose improvements to system design
-- **Integration Scripts**: Develop automation tools
-- **Testing**: Add test coverage for integration scenarios
-- **Code Review**: Review pull requests from other contributors
-- **Issue Triage**: Help organize and prioritize issues
-
 ### Code Standards
 
-- Write clear, self-documenting code
-- Include comments for complex logic
-- Follow the established project structure
+- Follow PEP 8 style guide for Python code
 - Use meaningful variable and function names
-- Keep commits atomic and well-described
+- Add docstrings to all public functions and classes
+- Keep functions focused and modular
+- Write unit tests for new functionality
 
-### Communication
+### Documentation Standards
 
-- Use GitHub Issues for bug reports and feature requests
-- Use Pull Requests for code contributions
-- Tag relevant team members for reviews
-- Be respectful and constructive in all interactions
+- Use clear, concise language
+- Include code examples where appropriate
+- Keep diagrams up to date with code changes
+- Update changelog for significant changes
+- Cross-reference related documents
+
+### Pull Request Process
+
+1. **Fork and Clone**: Fork the repository and clone your fork locally
+2. **Create Branch**: Create a descriptive feature branch
+3. **Make Changes**: Implement your changes with appropriate tests
+4. **Test Locally**: Ensure all tests pass and code meets quality standards
+5. **Update Docs**: Update documentation to reflect your changes
+6. **Submit PR**: Create a pull request with clear description
+7. **Code Review**: Address reviewer feedback promptly
+8. **Merge**: Once approved, your PR will be merged
+
+### Commit Message Format
+
+```
+<type>: <subject>
+
+<body>
+
+<footer>
+```
+
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation only
+- `style`: Formatting, missing semicolons, etc.
+- `refactor`: Code restructuring
+- `test`: Adding tests
+- `chore`: Maintenance tasks
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run specific test file
+python -m pytest tests/test_specific.py
+
+# Run with coverage
+python -m pytest --cov=src tests/
+```
+
+### Test Standards
+
+- Aim for >80% code coverage
+- Write unit tests for individual components
+- Include integration tests for system interactions
+- Test edge cases and error conditions
+- Use descriptive test names that explain what's being tested
 
 ## FAQ
 
 ### General Questions
 
-**Q: What is the purpose of this project?**
+**Q: What's the timeline for this project?**
 
-A: This project provides a roadmap and coordination hub for integrating multiple AGI architecture repositories into a unified system. It helps teams collaborate on merging codebases while maintaining quality and coherence.
+A: Check the `roadmap/` directory for current milestones and timeline. We update this regularly as the project progresses.
 
-**Q: Who can contribute to this project?**
+**Q: How can I propose new features or changes?**
 
-A: Anyone interested in AGI architecture, system integration, or improving collaborative development processes is welcome to contribute. Whether you're a core team member or an external contributor, your input is valued.
-
-**Q: What skill level is required to contribute?**
-
-A: Contributions are welcome at all skill levels. Documentation improvements, bug reports, and testing are great starting points for beginners. More experienced contributors can work on architecture design and complex integrations.
-
-### Technical Questions
-
-**Q: Which repositories are being integrated?**
-
-A: Check the `integration-plans/` directory for a complete list of repositories involved in the merge. Each has its own integration document with specific details.
-
-**Q: What technologies are used?**
-
-A: The project uses a variety of technologies depending on the repositories being integrated. Common tools include Git for version control, various programming languages (Python, JavaScript, etc.), and documentation frameworks.
-
-**Q: How do I test my changes?**
-
-A: Run the test suite using the commands in the "Usage Instructions" section. Ensure all existing tests pass and add new tests for any functionality you add.
-
-**Q: What if I break something?**
-
-A: Don't worry! That's what version control and testing are for. If you encounter issues, create a bug report with details, and the team will help resolve it.
-
-### Process Questions
-
-**Q: How long does it take to review a pull request?**
-
-A: Review times vary based on complexity and team availability. Simple documentation fixes may be reviewed within a day, while complex architectural changes may take longer. You can tag specific reviewers to expedite the process.
+A: Open a GitHub Issue with the "enhancement" label. Describe the feature, its benefits, and potential implementation approach. We'll discuss it with the team.
 
 **Q: What if my pull request is rejected?**
 
