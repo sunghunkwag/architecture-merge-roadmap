@@ -2,8 +2,197 @@ openapi: 3.0.3
 info:
   title: Integration API
   version: 1.0.0
-  description: Sample OpenAPI spec for canonical integration API endpoints
-
+  description: |
+    Canonical integration API for agent actions, environment stepping, metadata queries, and memory storage.
+    This spec includes detailed request/response examples and error code documentation for each endpoint.
+servers:
+  - url: https://api.example.com
+    description: Production API
+  - url: https://staging.api.example.com
+    description: Staging API
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: Invalid request payload
+        code:
+          type: string
+          description: Machine-readable error code
+          example: VALIDATION_ERROR
+        details:
+          type: object
+          additionalProperties: true
+          description: Optional map with extra diagnostic information
+          example:
+            field: action_type
+            reason: must be one of [navigate, click, type]
+    AgentActRequest:
+      type: object
+      required: [action_type, parameters]
+      properties:
+        action_type:
+          type: string
+          description: The agent action to execute
+          enum: [navigate, click, type, select, wait]
+          example: navigate
+        parameters:
+          type: object
+          description: Parameters for the action
+          additionalProperties: true
+          example: { url: "https://example.com" }
+    AgentActResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [success, failure]
+          example: success
+        result:
+          type: object
+          nullable: true
+          description: Resulting data from the action
+          additionalProperties: true
+          example: { finalUrl: "https://example.com/welcome", httpStatus: 200 }
+        warnings:
+          type: array
+          items:
+            type: string
+          example: ["Deprecated selector used; consider updating"]
+    EnvStepRequest:
+      type: object
+      required: [env_id, action]
+      properties:
+        env_id:
+          type: string
+          description: Environment/session identifier
+          example: env_12345
+        action:
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [reset, step, render]
+              example: step
+            payload:
+              type: object
+              additionalProperties: true
+              example: { key: "ArrowUp", duration_ms: 100 }
+    EnvStepResponse:
+      type: object
+      required: [env_id, observation]
+      properties:
+        env_id:
+          type: string
+          example: env_12345
+        observation:
+          type: object
+          description: Observation after applying the action
+          additionalProperties: true
+          example:
+            screen: "data:image/png;base64,...."
+            events: [ { type: "keydown", key: "ArrowUp" } ]
+        reward:
+          type: number
+          nullable: true
+          example: 0.0
+        done:
+          type: boolean
+          example: false
+    MetaQueryRequest:
+      type: object
+      properties:
+        q:
+          type: string
+          description: Free-text query
+          example: list available tools
+        filters:
+          type: object
+          additionalProperties: true
+          example: { category: "web", stable: true }
+    MetaQueryResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          example:
+            - id: tool.navigate
+              name: Navigate
+              params: [url]
+            - id: tool.click
+              name: Click
+              params: [selector]
+    MemoryStoreRequest:
+      type: object
+      required: [namespace, records]
+      properties:
+        namespace:
+          type: string
+          example: user:42:preferences
+        records:
+          type: array
+          items:
+            type: object
+            required: [key, value]
+            properties:
+              key:
+                type: string
+                example: theme
+              value:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: boolean
+                  - type: object
+                  - type: array
+                example: dark
+              ttl_seconds:
+                type: integer
+                minimum: 0
+                description: Optional time-to-live in seconds
+                example: 86400
+        upsert:
+          type: boolean
+          default: true
+    MemoryStoreResponse:
+      type: object
+      properties:
+        namespace:
+          type: string
+          example: user:42:preferences
+        stored:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              status:
+                type: string
+                enum: [created, updated]
+              expires_at:
+                type: string
+                format: date-time
+          example:
+            - key: theme
+              status: updated
+              expires_at: 2025-10-20T07:12:00Z
+security:
+  - BearerAuth: []
 paths:
   /agent/act:
     post:
@@ -14,173 +203,348 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                action_type:
-                  type: string
-                  example: navigate
-                parameters:
-                  type: object
-                  example: {"url": "https://example.com"}
+              $ref: '#/components/schemas/AgentActRequest'
+            examples:
+              navigate_success:
+                summary: Navigate to a URL
+                value:
+                  action_type: navigate
+                  parameters:
+                    url: https://example.com
+              click_failure_missing_selector:
+                summary: Click without selector (invalid)
+                value:
+                  action_type: click
+                  parameters: {}
       responses:
         '200':
           description: Action executed successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  result:
-                    type: object
-
+                $ref: '#/components/schemas/AgentActResponse'
+              examples:
+                ok:
+                  summary: Successful navigation
+                  value:
+                    status: success
+                    result:
+                      finalUrl: https://example.com/welcome
+                      httpStatus: 200
+                    warnings: []
+        '400':
+          description: Bad request - invalid action or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing_selector:
+                  summary: Missing required selector for click
+                  value:
+                    error: Missing required field: parameters.selector
+                    code: VALIDATION_ERROR
+                    details:
+                      field: parameters.selector
+                      reason: required
+        '401':
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no_token:
+                  value:
+                    error: Authentication required
+                    code: UNAUTHORIZED
+        '409':
+          description: Conflict - action cannot be performed in current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                navigation_blocked:
+                  value:
+                    error: Navigation blocked by modal
+                    code: ACTION_CONFLICT
+                    details:
+                      modal: cookie-consent
+        '429':
+          description: Too Many Requests - rate limited
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                rate_limited:
+                  value:
+                    error: Rate limit exceeded
+                    code: RATE_LIMITED
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /env/step:
     post:
-      summary: Environment step execution
-      description: Execute a step in the environment and return observations
+      summary: Step the environment/session
+      description: Apply an action to an environment and return observation and reward
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                step_id:
-                  type: string
-                  example: step_001
-                action:
-                  type: object
-                  example: {"type": "click", "target": "button"}
+              $ref: '#/components/schemas/EnvStepRequest'
+            examples:
+              step_keypress:
+                value:
+                  env_id: env_12345
+                  action:
+                    type: step
+                    payload:
+                      key: ArrowUp
+                      duration_ms: 100
+              reset_env:
+                value:
+                  env_id: env_12345
+                  action:
+                    type: reset
       responses:
         '200':
-          description: Step executed successfully
+          description: Observation after action
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  observation:
-                    type: object
-                  reward:
-                    type: number
-                    example: 1.0
-                  done:
-                    type: boolean
-                    example: false
-
+                $ref: '#/components/schemas/EnvStepResponse'
+              examples:
+                after_step:
+                  value:
+                    env_id: env_12345
+                    observation:
+                      screen: data:image/png;base64,iVBOR...
+                      events:
+                        - type: keydown
+                          key: ArrowUp
+                    reward: 0.1
+                    done: false
+        '400':
+          description: Bad request - invalid action payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_action_type:
+                  value:
+                    error: action.type must be one of [reset, step, render]
+                    code: VALIDATION_ERROR
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Environment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                env_missing:
+                  value:
+                    error: Unknown env_id
+                    code: NOT_FOUND
+                    details:
+                      env_id: env_999
+        '409':
+          description: Conflict - environment busy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                busy:
+                  value:
+                    error: Environment is processing another action
+                    code: BUSY
+        '429':
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /meta/query:
-    get:
-      summary: Metadata query
-      description: Query metadata about the system or available resources
-      parameters:
-        - name: query_type
-          in: query
-          required: true
-          schema:
-            type: string
-            example: capabilities
+    post:
+      summary: Query metadata and capabilities
+      description: Returns metadata items matching a query and optional filters
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetaQueryRequest'
+            examples:
+              tools_query:
+                value:
+                  q: list available tools
+                  filters:
+                    category: web
+                    stable: true
       responses:
         '200':
-          description: Query result
+          description: Query results
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                  timestamp:
-                    type: string
-                    format: date-time
-
+                $ref: '#/components/schemas/MetaQueryResponse'
+              examples:
+                tools:
+                  value:
+                    items:
+                      - id: tool.navigate
+                        name: Navigate
+                        params: [url]
+                      - id: tool.click
+                        name: Click
+                        params: [selector]
+        '400':
+          description: Bad request - invalid filter syntax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_filter:
+                  value:
+                    error: filters.stable must be boolean
+                    code: VALIDATION_ERROR
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /memory/store:
     post:
-      summary: Store data in memory
-      description: Store key-value data in the memory system
+      summary: Store key-value records in a namespace
+      description: Upsert records with optional TTL; returns per-key status
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                key:
-                  type: string
-                  example: session_data
+              $ref: '#/components/schemas/MemoryStoreRequest'
+            examples:
+              upsert_theme_and_flags:
                 value:
-                  type: object
-                  example: {"user_id": "12345", "context": "demo"}
-                ttl:
-                  type: integer
-                  example: 3600
-      responses:
-        '201':
-          description: Data stored successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: stored
-                  key:
-                    type: string
-
-  /memory/retrieve:
-    get:
-      summary: Retrieve data from memory
-      description: Retrieve stored data by key
-      parameters:
-        - name: key
-          in: query
-          required: true
-          schema:
-            type: string
-            example: session_data
+                  namespace: user:42:preferences
+                  upsert: true
+                  records:
+                    - key: theme
+                      value: dark
+                      ttl_seconds: 86400
+                    - key: beta_flags
+                      value:
+                        onboarding_v2: true
+                        show_surveys: false
       responses:
         '200':
-          description: Data retrieved successfully
+          description: Records stored
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  key:
-                    type: string
+                $ref: '#/components/schemas/MemoryStoreResponse'
+              examples:
+                ok:
                   value:
-                    type: object
-                  timestamp:
-                    type: string
-                    format: date-time
-
-components:
-  schemas:
-    Action:
-      type: object
-      properties:
-        action_type:
-          type: string
-        parameters:
-          type: object
-    
-    Observation:
-      type: object
-      properties:
-        state:
-          type: object
-        metadata:
-          type: object
-    
-    MemoryEntry:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: object
-        timestamp:
-          type: string
-          format: date-time
+                    namespace: user:42:preferences
+                    stored:
+                      - key: theme
+                        status: updated
+                        expires_at: 2025-10-20T07:12:00Z
+                      - key: beta_flags
+                        status: created
+                        expires_at: null
+        '400':
+          description: Bad request - invalid records array
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                empty_records:
+                  value:
+                    error: records must contain at least one item
+                    code: VALIDATION_ERROR
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - insufficient scope to write namespace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden_namespace:
+                  value:
+                    error: Write access denied for namespace
+                    code: FORBIDDEN
+                    details:
+                      namespace: user:42:preferences
+        '409':
+          description: Conflict - concurrent write detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                version_conflict:
+                  value:
+                    error: ETag mismatch
+                    code: VERSION_CONFLICT
+        '413':
+          description: Payload Too Large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                too_large:
+                  value:
+                    error: namespace or value exceeds size limits
+                    code: PAYLOAD_TOO_LARGE
+        '429':
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
