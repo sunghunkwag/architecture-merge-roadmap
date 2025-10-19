@@ -1,38 +1,49 @@
-"""Python Adapter Class for API Bridging
+"""Enhanced Adapter Example for Bridging Legacy and Modern Agent APIs
 
-This module demonstrates a realistic adapter pattern implementation that bridges
-two different agent APIs. It shows data translation, method adaptation, and
-error handling between the legacy AgentAPI and modern AgentAPI v2.
+This module demonstrates a realistic adapter pattern with:
+- Input parameter validation and type conversion
+- Structured error handling and logging
+- Fallback/safe operation path via `safe_act`
+- Clear, actionable docstrings for maintainers
+
+The adapter translates a modern API surface to a legacy implementation while
+ensuring safer runtime behavior and predictable response shapes.
 
 Author: Architecture Integration Team
 Date: October 2025
 """
+from __future__ import annotations
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple, Union
 from datetime import datetime
 import json
 import logging
 
-# Configure logging
+# Configure logging for library + demo usage
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class LegacyAgentAPI:
-    """Simulates a legacy agent API with old-style methods and data structures."""
-    
+    """Simulates a legacy agent API with old-style methods and data structures.
+
+    The legacy API exposes:
+    - execute_task(task_id, params): returns a dict with primitive fields
+    - get_status(task_id): returns a pipe-delimited status string
+    """
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = "https://legacy-api.example.com"
         logger.info(f"Initialized LegacyAgentAPI with base URL: {self.base_url}")
-    
+
     def execute_task(self, task_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a task using legacy format.
-        
+
         Args:
             task_id: Unique identifier for the task
-            params: Dictionary with keys: 'action', 'priority', 'data'
-            
+            params: Dictionary with keys like 'action', 'priority', 'data'
+
         Returns:
             Dict with keys: 'status', 'result_code', 'output', 'timestamp'
         """
@@ -41,290 +52,299 @@ class LegacyAgentAPI:
             "status": "completed",
             "result_code": 200,
             "output": f"Task {task_id} executed with action {params.get('action')}",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     def get_status(self, task_id: str) -> str:
         """Get task status in legacy format (simple string)."""
+        # In a real system this might query a backing store; we return a synthetic mix
         return "RUNNING|COMPLETED|FAILED"
 
 
 class ModernAgentAPI:
-    """Simulates a modern agent API with updated methods and data structures."""
-    
+    """Simulates a modern agent API with updated methods and data structures.
+
+    This is included to document the intended modern surface. The adapter below
+    exposes a similar interface while delegating to the legacy API internally.
+    """
+
     def __init__(self, credentials: Dict[str, str]):
         self.credentials = credentials
-        self.endpoint = "https://api-v2.example.com"
-        logger.info(f"Initialized ModernAgentAPI with endpoint: {self.endpoint}")
-    
+
     def run(self, job: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a job using modern format.
-        
-        Args:
-            job: Dictionary with keys: 'id', 'type', 'priority', 'payload', 'metadata'
-            
-        Returns:
-            Dict with keys: 'success', 'code', 'data', 'created_at', 'completed_at'
-        """
-        logger.info(f"Running modern job: {job.get('id')}")
-        return {
-            "success": True,
-            "code": 200,
-            "data": {
-                "job_id": job.get("id"),
-                "result": f"Job {job.get('id')} processed successfully",
-                "metrics": {"duration_ms": 150, "cpu_usage": 0.45}
-            },
-            "created_at": datetime.now().isoformat(),
-            "completed_at": datetime.now().isoformat()
-        }
-    
+        raise NotImplementedError
+
     def query_status(self, job_id: str) -> Dict[str, Any]:
-        """Get job status in modern format (structured object)."""
-        return {
-            "job_id": job_id,
-            "state": "processing",
-            "progress": 0.75,
-            "message": "Job in progress"
-        }
+        raise NotImplementedError
+
+
+class ValidationError(ValueError):
+    """Raised when incoming parameters fail validation."""
 
 
 class AgentAPIAdapter:
-    """Adapter class that bridges LegacyAgentAPI to ModernAgentAPI interface.
-    
-    This adapter allows clients expecting the modern API to work seamlessly
-    with the legacy system by translating data structures and method calls.
-    
-    Design Pattern: Adapter (Wrapper)
-    Purpose: Provide interface compatibility between two incompatible APIs
+    """Adapter translating modern API calls to the legacy implementation.
+
+    Responsibilities:
+    - Validate and coerce incoming modern inputs into legacy-compatible formats
+    - Add defensive error handling and structured logging
+    - Provide a safe fallback path via `safe_act` when strict execution fails
+
+    Modern interface provided:
+    - run(job: Dict[str, Any]) -> Dict[str, Any]
+    - query_status(job_id: str) -> Dict[str, Any]
+    - safe_act(job: Dict[str, Any]) -> Dict[str, Any]
+
+    Response invariants (modern shape):
+    - Always returns a dictionary with keys: success(bool), code(int), data(dict),
+      created_at(str, ISO 8601), completed_at(str, ISO 8601)
     """
-    
+
     def __init__(self, legacy_api: LegacyAgentAPI):
-        """Initialize adapter with legacy API instance.
-        
-        Args:
-            legacy_api: Instance of LegacyAgentAPI to be adapted
-        """
         self.legacy_api = legacy_api
-        self._job_task_mapping = {}  # Maps modern job IDs to legacy task IDs
-        logger.info("AgentAPIAdapter initialized successfully")
-    
+
+    # --------------- Validation & Conversion helpers ---------------
+    @staticmethod
+    def _require_keys(mapping: Dict[str, Any], keys: List[str], ctx: str) -> None:
+        missing = [k for k in keys if k not in mapping]
+        if missing:
+            raise ValidationError(f"Missing required keys in {ctx}: {missing}")
+
+    @staticmethod
+    def _coerce_priority(value: Any) -> int:
+        """Coerce priority to int within 1..5.
+
+        Accepts int-like strings; clamps to the inclusive range [1, 5].
+        """
+        if isinstance(value, bool):  # avoid True/False being treated as 1/0
+            raise ValidationError("Priority must be an integer 1..5, not boolean")
+        try:
+            iv = int(value)
+        except (TypeError, ValueError):
+            raise ValidationError("Priority must be an integer 1..5")
+        return max(1, min(5, iv))
+
+    @staticmethod
+    def _coerce_action(job_type: Any) -> str:
+        """Map modern job 'type' to a legacy 'action'."""
+        if not isinstance(job_type, str) or not job_type.strip():
+            raise ValidationError("job.type must be a non-empty string")
+        mapping = {
+            "data_processing": "process_data",
+            "classification": "classify",
+            "summarization": "summarize",
+            "ingestion": "ingest",
+        }
+        return mapping.get(job_type, job_type)  # default: pass-through
+
+    @staticmethod
+    def _normalize_payload(payload: Any) -> Dict[str, Any]:
+        """Ensure payload is a dictionary; parse JSON strings when provided."""
+        if payload is None:
+            return {}
+        if isinstance(payload, dict):
+            return payload
+        if isinstance(payload, str):
+            payload = payload.strip()
+            if not payload:
+                return {}
+            try:
+                parsed = json.loads(payload)
+            except json.JSONDecodeError:
+                raise ValidationError("payload string must be valid JSON object")
+            if not isinstance(parsed, dict):
+                raise ValidationError("payload JSON must decode to an object")
+            return parsed
+        raise ValidationError("payload must be a dict or JSON string")
+
+    # --------------- Public modern methods ---------------
     def run(self, job: Dict[str, Any]) -> Dict[str, Any]:
-        """Adapt modern 'run' method to legacy 'execute_task'.
-        
-        Translates the modern job format to legacy task format and converts
-        the response back to modern format.
-        
-        Args:
-            job: Modern job dictionary with structure:
-                {
-                    'id': str,
-                    'type': str,
-                    'priority': int,
-                    'payload': dict,
-                    'metadata': dict
-                }
-                
-        Returns:
-            Modern response dictionary with structure:
-                {
-                    'success': bool,
-                    'code': int,
-                    'data': dict,
-                    'created_at': str,
-                    'completed_at': str
-                }
+        """Execute a modern job via the legacy API.
+
+        Expected job shape (modern):
+        - id: str
+        - type: str (mapped to legacy 'action')
+        - priority: int|str (1..5)
+        - payload: dict|json-string (free-form)
+        - metadata: optional dict
+
+        Returns modern-shaped response; on validation or runtime errors falls back to
+        `safe_act` when possible to provide a graceful response.
         """
-        job_id = job.get("id", "unknown")
-        logger.info(f"Adapting modern job {job_id} to legacy task")
-        
-        # Step 1: Translate modern job format to legacy task format
-        legacy_params = self._translate_job_to_task(job)
-        
-        # Store mapping for status queries
-        self._job_task_mapping[job_id] = job_id
-        
-        # Step 2: Call legacy API
+        created_at = datetime.now().isoformat()
         try:
-            legacy_response = self.legacy_api.execute_task(job_id, legacy_params)
-        except Exception as e:
-            logger.error(f"Legacy API call failed: {str(e)}")
-            return self._create_error_response(job_id, str(e))
-        
-        # Step 3: Translate legacy response to modern format
-        modern_response = self._translate_task_result_to_job(legacy_response, job_id)
-        
-        logger.info(f"Successfully adapted job {job_id}")
-        return modern_response
-    
-    def query_status(self, job_id: str) -> Dict[str, Any]:
-        """Adapt modern 'query_status' to legacy 'get_status'.
-        
-        Args:
-            job_id: Modern job identifier
-            
-        Returns:
-            Modern status dictionary with detailed structure
-        """
-        logger.info(f"Querying status for job {job_id}")
-        
-        # Get corresponding task ID
-        task_id = self._job_task_mapping.get(job_id, job_id)
-        
-        try:
-            # Call legacy status method
-            legacy_status = self.legacy_api.get_status(task_id)
-            
-            # Translate legacy status string to modern status object
-            modern_status = self._translate_status(legacy_status, job_id)
-            
-            return modern_status
-        except Exception as e:
-            logger.error(f"Status query failed: {str(e)}")
-            return {
-                "job_id": job_id,
-                "state": "error",
-                "progress": 0.0,
-                "message": f"Failed to query status: {str(e)}"
+            if not isinstance(job, dict):
+                raise ValidationError("job must be a dictionary")
+            self._require_keys(job, ["id", "type", "priority"], ctx="job")
+
+            job_id = str(job["id"]).strip()
+            if not job_id:
+                raise ValidationError("job.id must be a non-empty string")
+
+            action = self._coerce_action(job.get("type"))
+            priority = self._coerce_priority(job.get("priority"))
+            payload = self._normalize_payload(job.get("payload"))
+
+            # Compose legacy params
+            legacy_params = {
+                "action": action,
+                "priority": priority,
+                "data": payload,
             }
-    
-    def _translate_job_to_task(self, job: Dict[str, Any]) -> Dict[str, Any]:
-        """Translate modern job structure to legacy task parameters.
-        
-        Args:
-            job: Modern job dictionary
-            
-        Returns:
-            Legacy task parameters dictionary
+
+            legacy_resp = self.legacy_api.execute_task(task_id=job_id, params=legacy_params)
+
+            # Convert legacy to modern response shape
+            modern = {
+                "success": legacy_resp.get("result_code", 500) == 200,
+                "code": int(legacy_resp.get("result_code", 500)),
+                "data": {
+                    "job_id": job_id,
+                    "result": legacy_resp.get("output"),
+                    "metrics": {
+                        # In a real system, transform or compute metrics
+                        "duration_ms": 0,
+                        "cpu_usage": 0.0,
+                    },
+                },
+                "created_at": created_at,
+                "completed_at": legacy_resp.get("timestamp", datetime.now().isoformat()),
+            }
+            return modern
+        except ValidationError as ve:
+            logger.warning(f"Validation failed for job: {ve}")
+            return self.safe_act(job, error_msg=str(ve), created_at=created_at)
+        except Exception as e:
+            logger.exception("Unexpected error while running job")
+            return self.safe_act(job, error_msg=str(e), created_at=created_at)
+
+    def query_status(self, job_id: str) -> Dict[str, Any]:
+        """Query status for a job ID and convert to modern structure.
+
+        Modern shape:
+        - success: bool (True if status includes COMPLETED)
+        - code: int (200 when known, 206 for partial/unknown, 500 on error)
+        - data: { job_id, status: one-of [RUNNING, COMPLETED, FAILED, UNKNOWN] }
+        - created_at/completed_at: ISO 8601 timestamps for traceability
         """
-        return {
-            "action": job.get("type", "default_action"),
-            "priority": job.get("priority", 5),
-            "data": json.dumps({
-                "payload": job.get("payload", {}),
-                "metadata": job.get("metadata", {})
-            })
-        }
-    
-    def _translate_task_result_to_job(self, legacy_result: Dict[str, Any], 
-                                       job_id: str) -> Dict[str, Any]:
-        """Translate legacy task result to modern job response.
-        
+        created_at = datetime.now().isoformat()
+        try:
+            if not isinstance(job_id, str) or not job_id.strip():
+                raise ValidationError("job_id must be a non-empty string")
+            legacy_status_pipe = self.legacy_api.get_status(job_id.strip())
+            options = [s.strip() for s in str(legacy_status_pipe).split("|") if s.strip()]
+
+            # Pick the most favorable status deterministically for demo; real code would map actual state
+            status = "UNKNOWN"
+            for candidate in ("COMPLETED", "RUNNING", "FAILED"):
+                if candidate in options:
+                    status = candidate
+                    break
+
+            success = status == "COMPLETED"
+            code = 200 if success else (206 if status in {"RUNNING", "UNKNOWN"} else 500)
+            return {
+                "success": success,
+                "code": code,
+                "data": {
+                    "job_id": job_id,
+                    "status": status,
+                },
+                "created_at": created_at,
+                "completed_at": datetime.now().isoformat(),
+            }
+        except ValidationError as ve:
+            logger.warning(f"Validation failed for status query: {ve}")
+            return {
+                "success": False,
+                "code": 400,
+                "data": {"job_id": job_id, "status": "UNKNOWN", "error": str(ve)},
+                "created_at": created_at,
+                "completed_at": datetime.now().isoformat(),
+            }
+        except Exception as e:
+            logger.exception("Unexpected error while querying status")
+            return {
+                "success": False,
+                "code": 500,
+                "data": {"job_id": job_id, "status": "UNKNOWN", "error": str(e)},
+                "created_at": created_at,
+                "completed_at": datetime.now().isoformat(),
+            }
+
+    # --------------- Fallback path ---------------
+    def safe_act(self, job: Dict[str, Any], *, error_msg: str, created_at: Optional[str] = None) -> Dict[str, Any]:
+        """Return a conservative, consistent response when strict execution fails.
+
+        Behavior:
+        - Best-effort extraction of job_id
+        - Returns a standardized error payload with safe defaults
+        - Never raises; always returns a modern-shaped response
+
         Args:
-            legacy_result: Legacy API response
-            job_id: Modern job identifier
-            
-        Returns:
-            Modern job response dictionary
+            job: The original job dictionary (possibly malformed)
+            error_msg: Human-readable error message used for diagnostics
+            created_at: Optional created time to preserve trace continuity
         """
-        # Map legacy result_code to success boolean
-        success = legacy_result.get("result_code", 500) == 200
-        
-        return {
-            "success": success,
-            "code": legacy_result.get("result_code", 500),
-            "data": {
-                "job_id": job_id,
-                "result": legacy_result.get("output", "No output"),
-                "metrics": {
-                    "duration_ms": 0,  # Legacy API doesn't provide this
-                    "cpu_usage": 0.0   # Legacy API doesn't provide this
-                }
-            },
-            "created_at": legacy_result.get("timestamp", datetime.now().isoformat()),
-            "completed_at": datetime.now().isoformat()
-        }
-    
-    def _translate_status(self, legacy_status: str, job_id: str) -> Dict[str, Any]:
-        """Translate legacy status string to modern status object.
-        
-        Args:
-            legacy_status: Pipe-separated status string from legacy API
-            job_id: Modern job identifier
-            
-        Returns:
-            Modern status dictionary
-        """
-        # Legacy returns "RUNNING|COMPLETED|FAILED" format
-        status_map = {
-            "RUNNING": ("processing", 0.5),
-            "COMPLETED": ("completed", 1.0),
-            "FAILED": ("failed", 0.0)
-        }
-        
-        # Parse first status from pipe-separated string
-        first_status = legacy_status.split("|")[0] if "|" in legacy_status else legacy_status
-        state, progress = status_map.get(first_status, ("unknown", 0.0))
-        
-        return {
-            "job_id": job_id,
-            "state": state,
-            "progress": progress,
-            "message": f"Job {state}"
-        }
-    
-    def _create_error_response(self, job_id: str, error_msg: str) -> Dict[str, Any]:
-        """Create a standardized error response in modern format.
-        
-        Args:
-            job_id: Job identifier
-            error_msg: Error message
-            
-        Returns:
-            Modern error response dictionary
-        """
+        job_id = "unknown"
+        try:
+            if isinstance(job, dict) and job.get("id"):
+                job_id = str(job.get("id")).strip() or "unknown"
+        except Exception:
+            # Ignore extraction issues
+            pass
+
         return {
             "success": False,
             "code": 500,
             "data": {
                 "job_id": job_id,
                 "result": f"Error: {error_msg}",
-                "metrics": {"duration_ms": 0, "cpu_usage": 0.0}
+                "metrics": {"duration_ms": 0, "cpu_usage": 0.0},
             },
-            "created_at": datetime.now().isoformat(),
-            "completed_at": datetime.now().isoformat()
+            "created_at": created_at or datetime.now().isoformat(),
+            "completed_at": datetime.now().isoformat(),
         }
 
 
-# Example usage demonstration
+# ------------------------- Example usage -------------------------
 if __name__ == "__main__":
     print("=" * 70)
     print("Agent API Adapter Example")
     print("=" * 70)
-    
+
     # Initialize legacy API
     legacy_api = LegacyAgentAPI(api_key="legacy_key_12345")
-    
+
     # Create adapter
     adapter = AgentAPIAdapter(legacy_api)
-    
+
     # Create a modern-style job
     modern_job = {
         "id": "job_2025_001",
         "type": "data_processing",
-        "priority": 3,
+        "priority": 3,  # try also "4" to test coercion
         "payload": {
             "input_file": "data.csv",
-            "operations": ["filter", "transform", "aggregate"]
+            "operations": ["filter", "transform", "aggregate"],
         },
-        "metadata": {
-            "user": "admin",
-            "department": "analytics"
-        }
+        "metadata": {"user": "admin", "department": "analytics"},
     }
-    
+
     # Execute job through adapter (which uses legacy API internally)
     print("\nExecuting modern job through adapter...")
     result = adapter.run(modern_job)
+
     print("\nModern API Response:")
     print(json.dumps(result, indent=2))
-    
+
     # Query job status
     print("\nQuerying job status...")
     status = adapter.query_status("job_2025_001")
+
     print("\nStatus Response:")
     print(json.dumps(status, indent=2))
-    
+
     print("\n" + "=" * 70)
     print("Adapter successfully bridged legacy API to modern interface!")
     print("=" * 70)
