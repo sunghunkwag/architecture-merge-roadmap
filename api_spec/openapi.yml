@@ -1,0 +1,186 @@
+openapi: 3.0.3
+info:
+  title: Integration API
+  version: 1.0.0
+  description: Sample OpenAPI spec for canonical integration API endpoints
+
+paths:
+  /agent/act:
+    post:
+      summary: Agent action execution
+      description: Execute an agent action with specified parameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action_type:
+                  type: string
+                  example: navigate
+                parameters:
+                  type: object
+                  example: {"url": "https://example.com"}
+      responses:
+        '200':
+          description: Action executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  result:
+                    type: object
+
+  /env/step:
+    post:
+      summary: Environment step execution
+      description: Execute a step in the environment and return observations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                step_id:
+                  type: string
+                  example: step_001
+                action:
+                  type: object
+                  example: {"type": "click", "target": "button"}
+      responses:
+        '200':
+          description: Step executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  observation:
+                    type: object
+                  reward:
+                    type: number
+                    example: 1.0
+                  done:
+                    type: boolean
+                    example: false
+
+  /meta/query:
+    get:
+      summary: Metadata query
+      description: Query metadata about the system or available resources
+      parameters:
+        - name: query_type
+          in: query
+          required: true
+          schema:
+            type: string
+            example: capabilities
+      responses:
+        '200':
+          description: Query result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /memory/store:
+    post:
+      summary: Store data in memory
+      description: Store key-value data in the memory system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                  example: session_data
+                value:
+                  type: object
+                  example: {"user_id": "12345", "context": "demo"}
+                ttl:
+                  type: integer
+                  example: 3600
+      responses:
+        '201':
+          description: Data stored successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: stored
+                  key:
+                    type: string
+
+  /memory/retrieve:
+    get:
+      summary: Retrieve data from memory
+      description: Retrieve stored data by key
+      parameters:
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+            example: session_data
+      responses:
+        '200':
+          description: Data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  value:
+                    type: object
+                  timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  schemas:
+    Action:
+      type: object
+      properties:
+        action_type:
+          type: string
+        parameters:
+          type: object
+    
+    Observation:
+      type: object
+      properties:
+        state:
+          type: object
+        metadata:
+          type: object
+    
+    MemoryEntry:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
